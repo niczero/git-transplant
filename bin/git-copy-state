@@ -1,0 +1,324 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use 5.014;
+
+our $VERSION = 0.013;
+
+use Carp 'croak';
+use POSIX qw(mktime strftime);
+
+my $git = '/usr/bin/git';
+
+sub _git { not system $git, @_ }
+
+my $version = qx[$git 'version'];
+
+++$|;  # autoflush: want errors in logical order
+
+my ($policy, $timestamp, $author);
+while (@ARGV and $ARGV[0] =~ /^\-\-/) {
+  my $opt = shift @ARGV;
+  if ($opt =~ /^\-\-date(?:\=|$)/) {
+    $opt = shift(@ARGV) // '(missing)' unless $opt =~ s/^\-\-date\=//;
+    $policy = 'provided';
+    $timestamp = _parse_date($opt) or die "Bad date ($opt)\n";
+  }
+  elsif ($opt =~ /^\-\-date-from-author$/) {
+    $policy = 'source-author';
+  }
+  elsif ($opt =~ /^\-\-date-from-committer$/) {
+    $policy = 'source-committer';
+  }
+  elsif ($opt =~ /^\-\-date-like-commit(?:\=|$)/) {
+    $opt = shift(@ARGV) // '(missing)'
+      unless $opt =~ s/^\-\-date-like-commit\=//;
+    $policy = 'provided';
+    $timestamp = _stat_commit($opt) or die "Bad file ($opt)\n";
+  }
+  elsif ($opt =~ /^\-\-date-like-file(?:\=|$)/) {
+    $opt = shift(@ARGV) // '(missing)'
+      unless $opt =~ s/^\-\-date-like-file\=//;
+    $policy = 'provided';
+    $timestamp = _stat_file($opt) or die "Bad file ($opt)\n";
+  }
+  elsif ($opt =~ /^\-\-author(?:\=|$)/) {
+    $opt = shift(@ARGV) // '(missing)'
+      unless $opt =~ s/^\-\-author\=//;
+    $author = $opt;
+  }
+  else {
+    die "Unrecognised option ($opt)\n";
+  }
+}
+$timestamp .= strftime ' %z', localtime $timestamp
+  unless ($timestamp //= time) =~ /\s/;  # default from local
+
+my $that_dest = pop // die "Need to reference the source end-point\n";
+my $that_base = pop // "$that_dest^";  # might not exist
+die "Too many arguments\n" if @ARGV;
+
+print STDERR "begin checking of pre-conditions\n";
+_git 'symbolic-ref', 'HEAD' or die "Not on a branch\n";
+_git diff => '--quiet', '--ignore-submodules', 'HEAD'
+  or die "Not in a clean state\n";
+
+_git log => '-1', '--oneline', $that_dest, '--'
+  or die "Failed to read git log of source end-point ($that_dest)\n";
+my @queue;
+eval {
+  _git log => '-1', '--oneline', $that_base, '--';
+  open my $fh, '-|', $git, 'rev-list',
+      '--topo-order', "^$that_base", $that_dest, '--'
+    or die "Failed to produce list of desired commits: $!\n";
+  while (defined(my $that = <$fh>)) {
+    chomp $that;
+    unshift @queue, $that;  # reverse order
+  }
+  close $fh;
+}
+or eval {
+  open my $fh, '-|', $git, 'rev-list', $that_dest, '--'
+    or die "Failed to produce list of target commits: $!\n";
+  while (defined(my $that = <$fh>)) {
+    chomp $that;
+    push @queue, $that;
+  }
+  close $fh;
+  die "Not a parent-less commit ($that_dest)\n" unless @queue == 1;
+}
+or die "Failed to list source commits ($that_base)\n[$@]\n";
+
+my $this = qx[$git rev-parse --verify --quiet HEAD];
+chomp $this;
+print STDERR "end checking of pre-conditions (satisfied)\n";
+
+print STDERR "begin copying\n";
+my $qty = 0;
+
+for my $that (@queue) {
+  my @options;
+  push @options, '--author', $author if defined $author;
+  if (($policy // '') =~ /^source-/) {
+    my $timing = $policy eq 'source-committer'
+      ? qx[$git log -1 --pretty='%ct:%cd' $that]
+      : qx[$git log -1 --pretty='%at:%ad' $that];
+    chomp $timing;
+
+    @ENV{qw(GIT_COMMITTER_DATE)} = _timestamp($timing);
+  }
+  elsif ($policy) {
+    $ENV{GIT_COMMITTER_DATE} = $timestamp;
+    push @options, '--date', $timestamp;
+  }
+
+  _git reset => '--hard', $that
+      and _git reset => '--soft', $this
+      and _git add => '--update'
+    or die "Failed step ($that)\n";
+
+  _git commit => '--allow-empty', '--no-verify', '-C', $that, @options;
+  $this = qx[$git rev-parse --verify --quiet HEAD];
+  chomp $this;
+
+  die "Failed patching $this to $that\n"
+    unless _git diff => '--quiet', '--ignore-submodules', $this, $that;
+  ++$qty;
+}
+
+print STDERR "end copying (committed: $qty)\n";
+
+sub _parse_date {
+  my $date = shift // 'MISSING';
+  return $1 if $date =~ /^(\d{9,} (?:\+|\-)\d{4})$/;
+  return $1 if $date =~ /^(\d{9,})\b/;
+  return undef
+    unless $date =~ /^(\d{4})-(\d\d)-(\d\d)(?: |T)(\d\d):(\d\d)(?::(\d\d))?$/;
+  return mktime($6 // 0, $5, $4, $3, $2 - 1, $1 - 1900);
+}
+
+sub _stat_commit {
+  my $commit = shift // 'MISSING';
+  my $timing = qx[$git log -1 --pretty=%at:%ad $commit];
+  chomp $timing;
+  return _timestamp($timing);
+}
+
+sub _stat_file {
+  my $filename = shift // 'MISSING';
+  return(-f $filename ? (stat $filename)[9] : undef);
+}
+
+sub _timestamp {
+  my ($timing) = @_;
+  my $timestamp = $timing =~ /^(\d+):/ ? $1 : croak "Bad timestamp ($timing)";
+  my $offset = $timing =~ / ((?:\+|\-)\d+)$/ ? $1 : '';
+  return "$timestamp $offset";
+}
+
+sub _zone {  # currently unused
+  my $offset = shift // '+0000';
+  my $sign = ($offset =~ s/^-//)  ? '+'
+           : ($offset =~ s/^\+//) ? '-' : '';
+  return sprintf 'Etc/GMT%s%u', $sign, int($offset / 100 + 0.1);
+}
+
+__END__
+=head2 NAME
+
+git-copy-state
+
+=head2 SYNOPSIS
+
+  git copy-state [<base>] <end-point>
+  git copy-state a2aa6ee f860d8f
+  git copy-state --date-from-author a2aa6ee f860d8f
+  git copy-state --date-like-file=Makefile f860d8f
+
+=head2 DESCRIPTION
+
+Copies a chain of (one or more) commits onto the current branch, respecting the
+end-state of each copied commit.  Rather than consider what changes were
+introduced by those commits (as cherry-pick does), it reliably copies the state
+of the files that were present at the end of each commit.
+
+The specified base commit is not copied, but each subsequent commit from there
+to end-point commit is copied onto the current branch.  Things are a little
+interesting if that path is non-linear (eg from non-fast-forward merges).  In
+that case copy-state flattens the path using topological ordering, as in
+
+  git rev-list --topo-order --reverse ^<base> <end-point>
+
+To see a log of the commits to be copied, you can preview with
+
+  git log --topo-order --reverse --oneline <base>..<end-point>
+
+The main use cases are (a) tidying up a feature branch, (b) repairing mistakes
+on a branch, (c) amending the timestamps along a branch, and (d) examining the
+files in old stashes (avoiding merge headaches).
+
+Since copies have new commit hashes, this constitutes rewriting history (even if
+the content and metadata are identical) and so should only be done on
+not-yet-published branches or where there is consensus that reference breakage
+is justified.
+
+=head2 OPTIONS
+
+=head3 --author
+
+  git copy-state --author='Nic Sandfield <nic@example.com>' a2aa6ee f860d8f
+
+=head3 --date
+
+  git copy-state --date='2001-01-01 00:00:01' f860d8f
+  git copy-state --date=978307201 f860d8f
+  git copy-state --date='978307201 +0100' f860d8f
+
+=head3 --date-from-author
+
+  git copy-state --date-from-author a2aa6ee f860d8f
+
+Sets the author and committer dates to be the author date of each source commit.
+
+=head3 --date-from-committer
+
+  git copy-state --date-from-committer a2aa6ee f860d8f
+
+Sets the author and committer dates to be the committer date of each source
+commit.
+
+=head3 --date-like-file
+
+  git copy-state --date-like-file=Makefile f860d8f
+
+Sets the author and committer dates to be the modification time of the given
+file.
+
+=head3 --date-like-commit
+
+  git copy-state --date-like-commit=bb30adc f860d8f
+
+Sets the author and committer dates to be the author date of the given commit.
+
+=head2 CAVEAT EMPTOR
+
+Each commit is copied as (a snapshot of) state.  So whatever files were present
+at the end of the source commit, those files will be present at the end of the
+copied commit; files may appear as added or deleted even if those changes were
+not introduced by the source commit itself (but rather one of its ancestors).
+
+This distinction means copy-state is quite specialised and distinct from
+mainstream git usage.  Examples of suitable use include:
+* You want to erase one or more commits from history while preserving the
+  resulting state of subsequent commits (in contrast to a rebase which would
+  preserve effective changes but usually results in a different final state).
+* You might want to graft a 'downstream' tree onto an 'upstream' tree in such a
+  way that the earlier commits are preserved in history but their files do not
+  prevail into the 'downstream' state.
+* You may have used the wrong author email address.
+* You want to correct mistakes in the datetime attribution.
+
+Consider the chain of commits A..D below.
+
+  A---B---C---D master
+
+From this point, the result of:
+
+  git checkout -b pruned A; git copy-state B D
+
+would be:
+
+    C'--D' pruned
+   /
+  A---B---C---D master
+
+This could be very useful if B accidentally introduced a secret file and C
+deleted it.  However, if C did not delete it then the secret file prevails into
+C and in that case the branch 'pruned' is not a fix.  (As ever with history
+rewriting, the commit messages could become confusing, for instance if the
+commit message in C mentions removing the problem file, but no removal is
+visible in C'.  In this kind of operation it often pays to amend the commit
+message at the same time.)
+
+One advantage this tool has is it is unlikely to encounter problems, in contrast
+to patch-based tools like rebase and cherry-pick which can get mired in merge
+conflicts and can fail entirely.  (The comparison is moot, however, since each
+side has a different goal.)
+
+=head2 SUPPORT
+
+Raise any issues discovered at the source repo:
+
+  https://github.com/niczero/git-copy-state/issues
+
+This might work on all flavours of linux, but not with ancient versions of git.
+Pull requests are welcome, especially if they help with portability or
+internationalisation.
+
+=head2 PRE-CONDITIONS
+
+The working directory needs to be on a branch (ie not in detached head state)
+and in a clean state (ie without any pending changes).
+
+The end-point commit needs to be reachable from the base commit.
+
+=head2 ERRORS AND DIAGNOSTICS
+
+A fair amount of debug data, of varying degrees of usefulness, are spat to
+STDERR, so you might want to tee that into a file.
+
+  git copy-state a b | tee /tmp/copy.log
+
+An error saying "Failed step (<that>)" means it failed when using git-reset to
+mimic the resulting state of commit <that>.
+
+An error saying "Failed patching <this> to <that>" means there was a failure
+identified when comparing desired source commit <that> to latest attempt commit
+<this>.  You can then use git-diff to compare those two commits.
+
+=head1 COPYRIGHT AND LICENCE
+
+Copyright (c) 2017--2018 Nic Sandfield.  All rights reserved.
+
+This program is free software, you can redistribute it and/or modify it under
+the terms of the Artistic License version 2.0.
