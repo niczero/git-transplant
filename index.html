@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
+<meta name="description" content="Transplant Git commit chains">
+<meta name="author" content="Nic Sandfield">
+
+<title>Daggit</title>
+
+<link rel="stylesheet" href="dist/app.20f555a.css">
+</head>
+
+<body id="page-top">
+
+<!-- Navigation -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-darkgreen fixed-top" id="mainNav">
+  <div class="container">
+    <a class="navbar-brand js-scroll-trigger" href="https://github.com/niczero/git-transplant">Git Transplant</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarResponsive">
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item">
+          <a class="nav-link js-scroll-trigger" href="#features">Features</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link js-scroll-trigger" href="#start">Getting Started</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link js-scroll-trigger" href="#examples">Examples</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<header class="bg-primary text-white h-100">
+  <div class="container text-center h-100">
+    <div class="jumbotron h-100">
+      <div style="vertical-align: middle;">
+        <h1>Git Transplant</h1>
+        <p class="lead">Copy chains of Git commits, respecting state rather than
+            changes.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 mx-auto">
+        <h2>Features</h2>
+        <ul>
+          <li>Faithfully copies the full state of each commit.</li>
+          <li>Never does a merge; never encounters conflict.</li>
+          <li>Sequentialises non-linear paths.</li>
+          <li>Can set author, author date, committer date.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start" class="bg-dark">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 mx-auto text-light">
+        <h2>Getting Started</h2>
+        <ol>
+          <li>Copy the
+              <a href="https://github.com/niczero/git-transplant/blob/master/bin/git-transplant">executable</a>
+              to a suitable directory.
+            <pre><code class="text-light">
+  cp bin/git-transplant /usr/local/bin/</code></pre>
+          </li>
+          <li>Copy the manual page to a suitable directory.
+            <pre><code class="text-light">
+  gzip &lt;man/git-transplant.1 &gt;/usr/local/share/man/man1/git-transplant.1.gz</code></pre>
+          </li>
+          <li>Check the manual page.
+            <pre><code class="text-light">
+  git transplant --help</code></pre>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="examples">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 mx-auto">
+        <h2>Examples</h2>
+
+        <h4 class="pt-4">Correct the committer date on a chain of amended commits</h4>
+        <p>Occasionally we have reason to revise a chain of commits.  Perhaps we
+            included the wrong licence file, or no licence file at all.  In such
+            extreme situations, we can rewind our branch and redo each 'bad'
+            commit.</p><pre><code class="text-dark"
+>  git tag bad
+  git reset --hard $base
+  [...for each commit $bad...]
+    git cherry-pick --no-commit $bad1
+    [...fix the problem with this commit...]
+    git commit -C $bad1
+  git tag -d bad</code></pre>
+        <p>The author dates will be preserved, but tools such as <code>git
+            graph</code> are driven by the committer dates, which have just been
+            set to 'now'.  This can make the graphs less intuitive and so less
+            powerful.  An easy solution is to use git transplant to set the
+            committer dates to be the same as the author dates.</p><pre><code
+            class="text-dark"
+>  git tag interim
+  git reset --hard $base
+  git transplant --date-from-author HEAD interim
+  git tag -d interim</code></pre>
+
+        <h4 class="pt-4">Explore the contents of an old stash</h4>
+        <p>A stash entry is stored as a merge of two or more commits.  One way
+            to explore their contents is to checkout that merge, but if the
+            stash is old, or you are not on a compatible branch, the use of
+            <code>stash apply</code> can get mired in resolving merge conflicts.
+            One easy solution is to transplant the full state of the stash
+            entry, bypassing all consideration of merge conflicts.</p><pre><code
+>  git transplant --no-commit stash@{5}</code></pre>
+
+        <h4 class="pt-4">Capture history after the event</h4>
+        <p>While prototyping a new tool, you have maintained a series of files
+            forming an audit trail of configuration changes.</p><pre><code
+>  cp -p config config_0
+  [...some edits...]
+  cp -p config config_1</code></pre>
+        <p>Now it is deemed worthy of a repo in which to store most of those
+            file versions.  First make a chain of commits with the correct
+            content:</p><pre><code
+>  cat config_0 >config
+  git add config
+  git commit -m'First stab'
+  cat config_1 >config
+  git add -u
+  git commit -m'Second stab'</code></pre>
+        <p>Then tag that chain (eg 'interim') and reset your branch back to the
+            base of the chain.  Then use transplant to set both dates according
+            to the relevant file timestamp.</p><pre><code
+>  git transplant --date-like-file=config_0 $commit_0
+  git transplant --date-like-file=config_1 $commit_1</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="py-3 bg-dark">
+  <div class="container">
+    <p class="m-0 text-center text-muted">Copyright &copy; 2017&mdash;18,
+        Nic Sandfield</p>
+  </div>
+</footer>
+</body>
+</html>
