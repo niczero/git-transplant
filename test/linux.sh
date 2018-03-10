@@ -24,11 +24,11 @@ git branch -m master B
 git branch A
 git commit --allow-empty -mOne \
   --date='2002-02-02 10:10:10' --author='Raven <raven@ttitans.com>'
-git commit --allow-empty -mTwo \
+GIT_COMMITTER_DATE='2003-04-04 11:11:11' git commit --allow-empty -mTwo \
   --date='2003-03-03 10:10:10' --author='Starfire <starfire@ttitans.com>'
 log 'Created initial commits' && sleep 1
 
-# Test option: author
+log 'Test option: author'
 git checkout -b C A
 "$GCS" --author='Cyborg <cyborg@ttitans.com>' A B
 x="$(git log -1 --pretty=%an B)"
@@ -38,7 +38,7 @@ x="$(git log -1 --pretty=%an C)"
 [ "$x" == 'Cyborg' ] \
   && log 'Correct author' || fail "Wrong author ($x)"
 
-# Test option: date
+log 'Test option: date'
 git checkout -b D A
 "$GCS" --date='1999-12-31 23:59:59' A B
 x="$(git log -1 --pretty=%ai B | cut -d' ' -f1)"
@@ -54,7 +54,7 @@ x="$(git log -1 --pretty=%ci D | cut -d' ' -f1)"
 [ "$x" == 1999-12-31 ] \
   && log 'Correct committer date' || fail "Wrong committer date ($x)"
 
-# Test option: date (epoch with offset)
+log 'Test option: date (epoch with offset)'
 "$GCS" --date='946673999 -0300' B
 x="$(git log -1 --pretty=%ct B)"
 [ "$x" != 946673999 ] \
@@ -66,9 +66,9 @@ x="$(git log -1 --pretty=%ai D)"
 [ "$x" == '1999-12-31 17:59:59 -0300' ] \
   && log 'Correct author date' || fail "Wrong author date ($x)"
 
-# Test option: date-like-commit
+log 'Test option: date-like-commit'
 git checkout -b F A
-"$GCS" --date-like-commit='A' B
+"$GCS" --date-like-commit=A B
 x="$(git log -1 --pretty=%at)"
 [ "$x" == 978343810 ] \
   && log 'Correct author date' || fail "Wrong author date ($x)"
@@ -76,7 +76,7 @@ x="$(git log -1 --pretty=%ct)"
 [ "$x" == 978343810 ] \
   && log 'Correct committer date' || fail "Wrong committer date ($x)"
 
-# Test option: date-like-file
+log 'Test option: date-like-file'
 file="$(mktemp -t git-copy.XXXXXXXX)"
 touch --date='2006-12-04 09:30:00' "$file"
 git checkout -b E A
@@ -86,32 +86,32 @@ x="$(git log -1 --pretty=%ai E | cut -d' ' -f1)"
   && log 'Correct author date' || fail "Wrong author date ($x)"
 rm -f "$file"
 
-# Test option: date-from-author
-"$GCS" D
+log 'Test option: date-from-author'
+"$GCS" B
 x="$(git log -1 --pretty=%ai E | cut -d' ' -f1)"
-[ "$x" == 1999-12-31 ] \
+[ "$x" == 2003-03-03 ] \
   && log 'Correct author date' || fail "Wrong author date ($x)"
 x="$(git log -1 --pretty=%ci E | cut -d' ' -f1)"
 [ "$x" != 1999-12-31 ] \
   && log 'Correct committer date' || fail "Wrong committer date ($x)"
-"$GCS" --date-from-author D
+"$GCS" --date-from-author B
 x="$(git log -1 --pretty=%ai E | cut -d' ' -f1)"
-[ "$x" == 1999-12-31 ] \
+[ "$x" == 2003-03-03 ] \
   && log 'Correct author date' || fail "Wrong author date ($x)"
 x="$(git log -1 --pretty=%ci E | cut -d' ' -f1)"
-[ "$x" == 1999-12-31 ] \
+[ "$x" == 2003-03-03 ] \
   && log 'Correct committer date' || fail "Wrong committer date ($x)"
 
-# Test option: date-from-committer
-"$GCS" --date-from-committer E
+log 'Test option: date-from-committer'
+"$GCS" --date-from-committer B
 x="$(git log -1 --pretty=%ai E | cut -d' ' -f1)"
-[ "$x" == 1999-12-31 ] \
+[ "$x" == 2003-04-04 ] \
   && log 'Correct author date' || fail "Wrong author date ($x)"
 x="$(git log -1 --pretty=%ci E | cut -d' ' -f1)"
-[ "$x" == 1999-12-31 ] \
+[ "$x" == 2003-04-04 ] \
   && log 'Correct committer date' || fail "Wrong committer date ($x)"
 
-# Test args: single
+log 'Test args: single'
 git checkout C
 x="$(git log -1 --pretty=%h)"
 "$GCS" B

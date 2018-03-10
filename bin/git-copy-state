@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use 5.014;
 
-our $VERSION = 0.013;
+our $VERSION = 0.021;
 
 use Carp 'croak';
 use POSIX qw(mktime strftime);
@@ -16,7 +16,7 @@ my $version = qx[$git 'version'];
 
 ++$|;  # autoflush: want errors in logical order
 
-my ($policy, $timestamp, $author);
+my ($policy, $timestamp, $author, $no_commit);
 while (@ARGV and $ARGV[0] =~ /^\-\-/) {
   my $opt = shift @ARGV;
   if ($opt =~ /^\-\-date(?:\=|$)/) {
@@ -47,15 +47,23 @@ while (@ARGV and $ARGV[0] =~ /^\-\-/) {
       unless $opt =~ s/^\-\-author\=//;
     $author = $opt;
   }
+  elsif ($opt =~ /^\-\-no-commit$/) {
+    ++$no_commit;
+  }
   else {
     die "Unrecognised option ($opt)\n";
   }
 }
 $timestamp .= strftime ' %z', localtime $timestamp
-  unless ($timestamp //= time) =~ /\s/;  # default from local
+  if $timestamp and $timestamp !~ /\s/;  # default from local
 
 my $that_dest = pop // die "Need to reference the source end-point\n";
-my $that_base = pop // "$that_dest^";  # might not exist
+my $that_base = pop;
+my $single;
+unless (defined $that_base) {
+  $that_base = "$that_dest^";  # might not exist
+  $single = 1;
+}
 die "Too many arguments\n" if @ARGV;
 
 print STDERR "begin checking of pre-conditions\n";
@@ -74,10 +82,12 @@ eval {
   while (defined(my $that = <$fh>)) {
     chomp $that;
     unshift @queue, $that;  # reverse order
+    last if $single;
   }
   close $fh;
 }
 or eval {
+  @queue = ();
   open my $fh, '-|', $git, 'rev-list', $that_dest, '--'
     or die "Failed to produce list of target commits: $!\n";
   while (defined(my $that = <$fh>)) {
@@ -99,15 +109,16 @@ my $qty = 0;
 for my $that (@queue) {
   my @options;
   push @options, '--author', $author if defined $author;
-  if (($policy // '') =~ /^source-/) {
-    my $timing = $policy eq 'source-committer'
-      ? qx[$git log -1 --pretty='%ct:%cd' $that]
-      : qx[$git log -1 --pretty='%at:%ad' $that];
+  if (($policy //= 'source-both') =~ /^source-/) {
+    my $timing = $policy eq 'source-author'
+      ? qx[$git log -1 --pretty='%at:%ad' $that]
+      : qx[$git log -1 --pretty='%ct:%cd' $that];
     chomp $timing;
 
-    @ENV{qw(GIT_COMMITTER_DATE)} = _timestamp($timing);
+    @ENV{qw(GIT_COMMITTER_DATE)} = $timestamp = _timestamp($timing);
+    push @options, '--date', $timestamp if $policy eq 'source-committer';
   }
-  elsif ($policy) {
+  else {
     $ENV{GIT_COMMITTER_DATE} = $timestamp;
     push @options, '--date', $timestamp;
   }
@@ -116,6 +127,8 @@ for my $that (@queue) {
       and _git reset => '--soft', $this
       and _git add => '--update'
     or die "Failed step ($that)\n";
+
+  last if $no_commit;
 
   _git commit => '--allow-empty', '--no-verify', '-C', $that, @options;
   $this = qx[$git rev-parse --verify --quiet HEAD];
@@ -174,6 +187,7 @@ git-copy-state
   git copy-state a2aa6ee f860d8f
   git copy-state --date-from-author a2aa6ee f860d8f
   git copy-state --date-like-file=Makefile f860d8f
+  git copy-state --no-commit stash@{4}
 
 =head2 DESCRIPTION
 
@@ -193,9 +207,19 @@ To see a log of the commits to be copied, you can preview with
 
   git log --topo-order --reverse --oneline <base>..<end-point>
 
+Instead of specifying a range (base .. end-point), a single commit can be
+specified.  When that is a compound commit, eg from stash, only the final commit
+is used.
+
+  git copy-state stash@{4}
+
+If a date option is used, the author date and committer date are set to the same
+date -- the referenced date.  Otherwise author date and committer date are each
+preserved from the original commit.
+
 The main use cases are (a) tidying up a feature branch, (b) repairing mistakes
 on a branch, (c) amending the timestamps along a branch, and (d) examining the
-files in old stashes (avoiding merge headaches).
+files in old branches & stashes (avoiding merge headaches).
 
 Since copies have new commit hashes, this constitutes rewriting history (even if
 the content and metadata are identical) and so should only be done on
@@ -208,47 +232,67 @@ is justified.
 
   git copy-state --author='Nic Sandfield <nic@example.com>' a2aa6ee f860d8f
 
+Specify the author.
+
 =head3 --date
 
   git copy-state --date='2001-01-01 00:00:01' f860d8f
   git copy-state --date=978307201 f860d8f
   git copy-state --date='978307201 +0100' f860d8f
 
+Use the specified date.  Format can be ISO, epoch seconds, or internal (epoch +
+offset).  Intended for single-commit copies.
+
 =head3 --date-from-author
 
   git copy-state --date-from-author a2aa6ee f860d8f
 
-Sets the author and committer dates to be the author date of each source commit.
+Use the author date of each source commit.
 
 =head3 --date-from-committer
 
   git copy-state --date-from-committer a2aa6ee f860d8f
 
-Sets the author and committer dates to be the committer date of each source
-commit.
-
-=head3 --date-like-file
-
-  git copy-state --date-like-file=Makefile f860d8f
-
-Sets the author and committer dates to be the modification time of the given
-file.
+Use the committer date of each source commit.
 
 =head3 --date-like-commit
 
   git copy-state --date-like-commit=bb30adc f860d8f
 
-Sets the author and committer dates to be the author date of the given commit.
+Use the author date of the referenced commit.  Intended for single-commit
+copies.
+
+=head3 --date-like-file
+
+  git copy-state --date-like-file=Makefile f860d8f
+
+Use the modification time of the referenced file.  Intended for single-commit
+copies.
+
+=head3 --no-commit
+
+  git copy-state --no-commit f860d8f
+
+Copies the file content from the source commit, but does not make a new commit.
+Only for single-commit copies; if a range is specified, only the first commit
+will be copied.
 
 =head2 CAVEAT EMPTOR
 
 Each commit is copied as (a snapshot of) state.  So whatever files were present
-at the end of the source commit, those files will be present at the end of the
-copied commit; files may appear as added or deleted even if those changes were
-not introduced by the source commit itself (but rather one of its ancestors).
+at the end of the original commit, those files will be present at the end of the
+new commit; files may appear as added or deleted even if those changes were not
+introduced by the original commit itself (but rather one of its ancestors).
 
 This distinction means copy-state is quite specialised and distinct from
-mainstream git usage.  Examples of suitable use include:
+mainstream git usage.  Standard tools such as 'rebase', 'cherry-pick', and
+'stash apply' are focused on respecting recent history -- they create a patch
+representing the original commits and a patch representing the current branch,
+and then merge the two together.  Instead 'copy-state' disrespects recent
+history and copies the resulting files from the original commit, not the changes
+made to those files.
+
+Examples of suitable use include:
 * You want to erase one or more commits from history while preserving the
   resulting state of subsequent commits (in contrast to a rebase which would
   preserve effective changes but usually results in a different final state).
@@ -300,7 +344,8 @@ internationalisation.
 The working directory needs to be on a branch (ie not in detached head state)
 and in a clean state (ie without any pending changes).
 
-The end-point commit needs to be reachable from the base commit.
+The end-point commit needs to be reachable from the base commit (but not
+necessarily from the current branch).
 
 =head2 ERRORS AND DIAGNOSTICS
 
