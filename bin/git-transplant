@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use 5.014;
 
-our $VERSION = 0.021;
+our $VERSION = 0.031;
 
 use Carp 'croak';
 use POSIX qw(mktime strftime);
@@ -179,15 +179,19 @@ sub _zone {  # currently unused
 __END__
 =head2 NAME
 
-git-copy-state
+git-transplant - Copy commits to current branch replicating file state
 
 =head2 SYNOPSIS
 
-  git copy-state [<base>] <end-point>
-  git copy-state a2aa6ee f860d8f
-  git copy-state --date-from-author a2aa6ee f860d8f
-  git copy-state --date-like-file=Makefile f860d8f
-  git copy-state --no-commit stash@{4}
+  git transplant [<options>] <base> <end-point>
+  git transplant [<options>] <end-point>
+
+=head2 EXAMPLES
+
+  git transplant a2aa6ee f860d8f
+  git transplant --date-from-author a2aa6ee f860d8f
+  git transplant --date-like-file=Makefile f860d8f
+  git transplant --no-commit stash@{4}
 
 =head2 DESCRIPTION
 
@@ -199,7 +203,7 @@ of the files that were present at the end of each commit.
 The specified base commit is not copied, but each subsequent commit from there
 to end-point commit is copied onto the current branch.  Things are a little
 interesting if that path is non-linear (eg from non-fast-forward merges).  In
-that case copy-state flattens the path using topological ordering, as in
+that case transplant flattens the path using topological ordering, as in
 
   git rev-list --topo-order --reverse ^<base> <end-point>
 
@@ -211,7 +215,7 @@ Instead of specifying a range (base .. end-point), a single commit can be
 specified.  When that is a compound commit, eg from stash, only the final commit
 is used.
 
-  git copy-state stash@{4}
+  git transplant stash@{4}
 
 If a date option is used, the author date and committer date are set to the same
 date -- the referenced date.  Otherwise author date and committer date are each
@@ -228,67 +232,70 @@ is justified.
 
 =head2 OPTIONS
 
-=head3 --author
+=head3 --author=<author string>
 
-  git copy-state --author='Nic Sandfield <nic@example.com>' a2aa6ee f860d8f
+  git transplant --author='Nic Sandfield <nic@example.com>' a2aa6ee f860d8f
+  git transplant --author=Nic a2aa6ee f860d8f
 
-Specify the author.
+Specify the author.  The full form is a string consisting of 'name <email>'.
+The short form is a string to be matched against existing commits.  In pattern
+matching, the first match found will be used.
 
-=head3 --date
+=head3 --date=<date>
 
-  git copy-state --date='2001-01-01 00:00:01' f860d8f
-  git copy-state --date=978307201 f860d8f
-  git copy-state --date='978307201 +0100' f860d8f
+  git transplant --date='2001-01-01 00:00:01' f860d8f
+  git transplant --date=978307201 f860d8f
+  git transplant --date='978307201 +0100' f860d8f
 
 Use the specified date.  Format can be ISO, epoch seconds, or internal (epoch +
 offset).  Intended for single-commit copies.
 
 =head3 --date-from-author
 
-  git copy-state --date-from-author a2aa6ee f860d8f
+  git transplant --date-from-author a2aa6ee f860d8f
 
 Use the author date of each source commit.
 
 =head3 --date-from-committer
 
-  git copy-state --date-from-committer a2aa6ee f860d8f
+  git transplant --date-from-committer a2aa6ee f860d8f
 
 Use the committer date of each source commit.
 
-=head3 --date-like-commit
+=head3 --date-like-commit=<commit object>
 
-  git copy-state --date-like-commit=bb30adc f860d8f
+  git transplant --date-like-commit=bb30adc f860d8f
 
-Use the author date of the referenced commit.  Intended for single-commit
-copies.
+Use the author date of the referenced commit.  Works with a commit hash, branch,
+tag, stash, etc.  Intended for single-commit copies.
 
-=head3 --date-like-file
+=head3 --date-like-file=<file>
 
-  git copy-state --date-like-file=Makefile f860d8f
+  git transplant --date-like-file=Makefile f860d8f
 
 Use the modification time of the referenced file.  Intended for single-commit
 copies.
 
 =head3 --no-commit
 
-  git copy-state --no-commit f860d8f
+  git transplant --no-commit f860d8f
 
 Copies the file content from the source commit, but does not make a new commit.
 Only for single-commit copies; if a range is specified, only the first commit
 will be copied.
 
-=head2 CAVEAT EMPTOR
+=head2 NOTES
 
 Each commit is copied as (a snapshot of) state.  So whatever files were present
 at the end of the original commit, those files will be present at the end of the
 new commit; files may appear as added or deleted even if those changes were not
 introduced by the original commit itself (but rather one of its ancestors).
 
-This distinction means copy-state is quite specialised and distinct from
+This distinction means transplant is quite specialised and distinct from
 mainstream git usage.  Standard tools such as 'rebase', 'cherry-pick', and
 'stash apply' are focused on respecting recent history -- they create a patch
 representing the original commits and a patch representing the current branch,
-and then merge the two together.  Instead 'copy-state' disrespects recent
+and then merge the two together.  Instead 'transplant' disrespects recent
 history and copies the resulting files from the original commit, not the changes
 made to those files.
 
@@ -308,7 +315,7 @@ Consider the chain of commits A..D below.
 
 From this point, the result of:
 
-  git checkout -b pruned A; git copy-state B D
+  git checkout -b pruned A; git transplant B D
 
 would be:
 
@@ -333,7 +340,7 @@ side has a different goal.)
 
 Raise any issues discovered at the source repo:
 
-  https://github.com/niczero/git-copy-state/issues
+  https://github.com/niczero/git-transplant/issues
 
 This might work on all flavours of linux, but not with ancient versions of git.
 Pull requests are welcome, especially if they help with portability or
@@ -352,7 +359,7 @@ necessarily from the current branch).
 A fair amount of debug data, of varying degrees of usefulness, are spat to
 STDERR, so you might want to tee that into a file.
 
-  git copy-state a b | tee /tmp/copy.log
+  git transplant a b | tee /tmp/copy.log
 
 An error saying "Failed step (<that>)" means it failed when using git-reset to
 mimic the resulting state of commit <that>.
