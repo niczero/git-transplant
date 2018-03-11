@@ -5,7 +5,7 @@ set -e -u
 declare -r  PROG="${0##*/}"
 declare -r  TEMPDIR="$(mktemp -d -t git-copy.XXXXXXXX)"
 declare -rx GIT_DIR="$TEMPDIR"/.git
-declare -r  GCS=bin/git-copy-state
+declare -r  GCS=bin/git-transplant
 
 function clean_up { rm -rf "$TEMPDIR"; }
 

@@ -1,0 +1,8 @@
+0.031 2018-03-11
+  - Rename tool: 'copy-state' -> 'transplant'.
+
+0.021 2018-03-10
+  - Modify logic of date options.
+
+0.013 2018-03-08
+  - Release core functionality.
