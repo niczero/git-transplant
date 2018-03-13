@@ -1,4 +1,7 @@
-0.031 2018-03-11
+0.041 2018-03-13
+  - Improve documentation.
+
+0.032 2018-03-11
   - Rename tool: 'copy-state' -> 'transplant'.
 
 0.021 2018-03-10

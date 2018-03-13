@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use 5.014;
 
-our $VERSION = 0.031;
+our $VERSION = 0.042;
 
 use Carp 'croak';
 use POSIX qw(mktime strftime);
@@ -183,8 +183,32 @@ git-transplant - Copy commits to current branch replicating file state
 
 =head2 SYNOPSIS
 
-  git transplant [<options>] <base> <end-point>
   git transplant [<options>] <end-point>
+  git transplant [<options>] <base> <end-point>
+
+=head2 DESCRIPTION
+
+In the first form of invocation, with a single argument, that single commit is
+copied to your current branch.  No merge is required, and the resulting state
+(of files) on your branch is exactly the same as it was after the original
+commit (C<end-point>).
+
+In the second form of invocation, with two arguments, each commit in the range
+C<base> (exclusive) to C<end-point> (inclusive) is copied in sequence to your
+current branch.
+
+To see a log of the commits to be copied, you can preview with
+
+  git log --topo-order --reverse --oneline <base>..<end-point>
+
+By default, the author date and committer date are each preserved from the
+original commit.  If a date option is used, the author date and committer date
+are set to the same date: the referenced date.
+
+Since copies have new commit hashes, this constitutes rewriting history (even if
+the content and metadata are identical) and so should only be done on
+not-yet-published branches or where there is consensus that reference breakage
+is justified.
 
 =head2 EXAMPLES
 
@@ -192,43 +216,6 @@ git-transplant - Copy commits to current branch replicating file state
   git transplant --date-from-author a2aa6ee f860d8f
   git transplant --date-like-file=Makefile f860d8f
   git transplant --no-commit stash@{4}
-
-=head2 DESCRIPTION
-
-Copies a chain of (one or more) commits onto the current branch, respecting the
-end-state of each copied commit.  Rather than consider what changes were
-introduced by those commits (as cherry-pick does), it reliably copies the state
-of the files that were present at the end of each commit.
-
-The specified base commit is not copied, but each subsequent commit from there
-to end-point commit is copied onto the current branch.  Things are a little
-interesting if that path is non-linear (eg from non-fast-forward merges).  In
-that case transplant flattens the path using topological ordering, as in
-
-  git rev-list --topo-order --reverse ^<base> <end-point>
-
-To see a log of the commits to be copied, you can preview with
-
-  git log --topo-order --reverse --oneline <base>..<end-point>
-
-Instead of specifying a range (base .. end-point), a single commit can be
-specified.  When that is a compound commit, eg from stash, only the final commit
-is used.
-
-  git transplant stash@{4}
-
-If a date option is used, the author date and committer date are set to the same
-date -- the referenced date.  Otherwise author date and committer date are each
-preserved from the original commit.
-
-The main use cases are (a) tidying up a feature branch, (b) repairing mistakes
-on a branch, (c) amending the timestamps along a branch, and (d) examining the
-files in old branches & stashes (avoiding merge headaches).
-
-Since copies have new commit hashes, this constitutes rewriting history (even if
-the content and metadata are identical) and so should only be done on
-not-yet-published branches or where there is consensus that reference breakage
-is justified.
 
 =head2 OPTIONS
 
@@ -292,12 +279,16 @@ new commit; files may appear as added or deleted even if those changes were not
 introduced by the original commit itself (but rather one of its ancestors).
 
 This distinction means transplant is quite specialised and distinct from
-mainstream git usage.  Standard tools such as 'rebase', 'cherry-pick', and
-'stash apply' are focused on respecting recent history -- they create a patch
-representing the original commits and a patch representing the current branch,
-and then merge the two together.  Instead 'transplant' disrespects recent
-history and copies the resulting files from the original commit, not the changes
-made to those files.
+mainstream git usage.  Standard tools such as C<rebase>, C<cherry-pick>, and
+C<stash apply> are focused on respecting recent history; they create a patch by
+comparing the original commit with its parent(s), and a patch representing the
+current branch, and then merge the two together.  Instead C<transplant>
+disregards recent history and copies the resulting files from the original
+commit, not the changes made to those files.
+
+The main use cases are (a) tidying up a feature branch, (b) repairing mistakes
+on a branch, (c) amending the timestamps along a branch, and (d) examining the
+files in old branches & stashes (avoiding merge headaches).
 
 Examples of suitable use include:
 * You want to erase one or more commits from history while preserving the
@@ -336,6 +327,26 @@ to patch-based tools like rebase and cherry-pick which can get mired in merge
 conflicts and can fail entirely.  (The comparison is moot, however, since each
 side has a different goal.)
 
+There is a common usage pattern of 'build a chain of commits, each having the
+correct content' and then 'transplant the chain, giving each the correct
+metadata'.
+
+For example, consider the following sequence when a chain of commits is
+discovered to have a recurring problem, such as inclusion of a private file.
+
+  git tag broken  # mark current branch for future reference
+  git reset --hard afc5c58  # move branch back to last 'good' commit
+  git cherry-pick --no-commit 773331a  # copy commit using rebase/cherry-pick/transplant
+  ...  # fix problems
+  git commit -C 499f61c  # reuse original message and metadata
+  ...  # repeat from cherry-pick if more than one broken commit
+  git tag interim
+  git reset --hard afc5c58  # back to last 'good' commit
+  git transplant --date-from-author interim
+
+In the simple case of the author being wrong (eg the wrong email address), git
+transplant can fix the chain in a single action via the C<--author> option.
+
 =head2 SUPPORT
 
 Raise any issues discovered at the source repo:
@@ -368,9 +379,9 @@ An error saying "Failed patching <this> to <that>" means there was a failure
 identified when comparing desired source commit <that> to latest attempt commit
 <this>.  You can then use git-diff to compare those two commits.
 
-=head1 COPYRIGHT AND LICENCE
+=head2 COPYRIGHT AND LICENCE
 
 Copyright (c) 2017--2018 Nic Sandfield.  All rights reserved.
 
 This program is free software, you can redistribute it and/or modify it under
-the terms of the Artistic License version 2.0.
+the terms of the MIT Licence.
