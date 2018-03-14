@@ -1,5 +1,6 @@
-0.041 2018-03-13
+0.042 2018-03-14
   - Improve documentation.
+  - Doc how to copy root commits.
 
 0.032 2018-03-11
   - Rename tool: 'copy-state' -> 'transplant'.

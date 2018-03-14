@@ -1,27 +1,43 @@
 # Git Transplant
 
-## DESCRIPTION
+## Description
 
 Git transplant copies a chain of (one or more) commits onto the current branch
 replicating file state.  Optionally it can also set the author, author-date, and
 commmitter-date.
 
 There are two main applications for this: first, to transpose commits faithfully
-from one development path to the current branch, avoiding any tangle of
-discussion about merges; and second, to (re)build a development path and then
-use git transplant to restore the date timestamps.
+from one development path to the current branch, avoiding any tangled discussion
+about merges; and second, to (re)build a development path and then use git
+transplant to restore the date timestamps.
 
-## INSTALLATION
+## Installation
 
-1. Copy bin/git-transpose to your git installation directory.
+1. Copy ```bin/git-transpose``` to a location for local executables (on your
+   PATH).
 
-  cp bin/git-tranpose /usr/lib/git-core/
+```sh
+  cp bin/git-tranpose /usr/local/bin/
+  chmod a+x /usr/local/bin/git-transpose
+```
 
-2. Copy man/git-transpose.1 to your git manual pages.
+2. Copy ```man/git-transpose.1``` to a location for local manual pages.
 
-  gzip <man/git-tranpose.1 >/usr/share/man/man1/git-transpose.1.gz
+```sh
+  gzip <man/git-tranpose.1 >/usr/local/share/man/man1/git-transpose.1.gz
+```
 
-## COPYRIGHT AND LICENCE
+3. Test
+
+```sh
+  git transpose --help
+  git tran<tab>
+```
+
+If you have tab-completion working for git commands, it should also work for
+this new command.
+
+## Copyright and Licence
 
 Copyright (c) 2017--2018 Nic Sandfield.  All rights reserved.
 

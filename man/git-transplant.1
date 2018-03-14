@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "GIT-TRANSPLANT 1"
-.TH GIT-TRANSPLANT 1 "2018-03-13" "git-transplant v0.04" "Git User Contributed Documentation"
+.TH GIT-TRANSPLANT 1 "2018-03-14" "git-transplant v0.04" "Git User Contributed Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -333,6 +333,18 @@ discovered to have a recurring problem, such as inclusion of a private file.
 .PP
 In the simple case of the author being wrong (eg the wrong email address), git
 transplant can fix the chain in a single action via the \f(CW\*(C`\-\-author\*(C'\fR option.
+.PP
+\&\f(CW\*(C`git transplant\*(C'\fR can graft an entire commit chain onto the current branch, but
+this needs to be done in two steps; first copy the initial (root) commit
+individually, then copy the chain from there to the final commit.
+.PP
+.Vb 5
+\&  git checkout \-\-orphan new
+\&  git rm \-\-cached \-rf .
+\&  git commit \-\-allow\-empty \-mInit
+\&  git transplant 567f4ba  # first copy root commit individually
+\&  git transplant 567f4ba master  # then copy remainder of master branch
+.Ve
 .SS "\s-1SUPPORT\s0"
 .IX Subsection "SUPPORT"
 Raise any issues discovered at the source repo:
