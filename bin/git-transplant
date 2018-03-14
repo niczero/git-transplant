@@ -347,6 +347,16 @@ discovered to have a recurring problem, such as inclusion of a private file.
 In the simple case of the author being wrong (eg the wrong email address), git
 transplant can fix the chain in a single action via the C<--author> option.
 
+C<git transplant> can graft an entire commit chain onto the current branch, but
+this needs to be done in two steps; first copy the initial (root) commit
+individually, then copy the chain from there to the final commit.
+
+  git checkout --orphan new
+  git rm --cached -rf .
+  git commit --allow-empty -mInit
+  git transplant 567f4ba  # first copy root commit individually
+  git transplant 567f4ba master  # then copy remainder of master branch
+
 =head2 SUPPORT
 
 Raise any issues discovered at the source repo:
