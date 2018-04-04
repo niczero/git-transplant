@@ -42,8 +42,7 @@
     <div class="jumbotron h-100">
       <div style="vertical-align: middle;">
         <h1>Git Transplant</h1>
-        <p class="lead">Copy chains of Git commits, respecting state rather than
-            changes.</p>
+        <p class="lead">Copy chains of Git commits, respecting file state.</p>
       </div>
     </div>
   </div>
@@ -60,6 +59,40 @@
           <li>Sequentialises non-linear paths.</li>
           <li>Can set author, author date, committer date.</li>
         </ul>
+
+        <div class="float-md-right"><img width="250" src="img/stepping-stones.min.png"/></div><br>
+        <h4>Delta Blues</h4>
+        <p>A chain of Git commits can be thought of as a series of snapshots of
+        food preparation, with each commit being the food on the table at a
+        moment in time, and the deltas or patches being the mini recipes that
+        take you from one snapshot to the next.  We might have a chain that adds
+        icing to a cake, and apply (cherry-pick) that recipe (delta) to our
+        current chain, which is working with doughnuts, to produce iced
+        doughnuts.  On the other hand, we might be on a chain that has added
+        seeds to the doughnuts, in which case we have to merge the two recipes,
+        perhaps producing iced seeded doughnuts.</p>
+        <p>That model of capturing state but working with the derived deltas is
+        efficient, powerful, and tremendously useful.</p>
+
+        <h4>State of Things</h4>
+        <p>Just occasionally I might want instead to transplant (copy) a
+        particular snapshot to my current chain without consideration of deltas.
+        I want to transport that exact cake into my current chain of doughnuts
+        without any notion of merging recipes.</p>
+        <p>An example of such a situation is when we want to apply an old stash
+        entry.  The command <code>stash apply</code> will take what might be a
+        compound merge (the stash entry) and try to merge it with the current
+        branch, which may have diverged significantly from when the stash entry
+        was captured.  Instead of being handed a string of merge conflicts,
+        there might be times when you prefer <code>transplant --no-commit</code>
+        which will add, remove, and update files as necessary to match precisely
+        the state captured by the original commit.</p>
+
+        <h4>Splitting the Difference</h4>
+        <p>For a simple commit, its delta is the patch:
+        <pre><code>git diff 7614df0^!</code></pre></p>
+        <p>For that same commit, its file state is the tree listed by:
+        <pre><code>git archive 7614df0 | tar tf -</code></pre></p>
       </div>
     </div>
   </div>
